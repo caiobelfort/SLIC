@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.5)
 project(SLIC)
 
+set(CMAKE_CXX_STANDARD  14)
+
 find_package(ITK REQUIRED)
 include(${ITK_USE_FILE})
 

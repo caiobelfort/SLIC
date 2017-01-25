@@ -1,6 +1,7 @@
 
 #include <itkImage.h>
 #include <itkImageFileReader.h>
+#include <itkImageFileWriter.h>
 #include "SLIC.h"
 
 int main(int argc, char **argv)
@@ -16,8 +17,16 @@ int main(int argc, char **argv)
 
 	SLIC slic;
 	slic.SetInput(reader->GetOutput());
-	slic.SetNumberOfSuperPixels(20000);
+	slic.SetNumberOfSuperPixels(2000);
 	slic.Update();
+
+	auto output = slic.GetCountourImage();
+
+	auto writer = itk::ImageFileWriter<SLIC::ImageType>::New();
+
+	writer->SetFileName("segments.mha");
+	writer->SetInput(output);
+	writer->Update();
 
 	return EXIT_SUCCESS;
 

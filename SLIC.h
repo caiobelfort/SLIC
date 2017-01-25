@@ -10,7 +10,7 @@ public:
 	using LabeledImageType = itk::Image<int, 2>;
 	using DistanceImageType = itk::Image<float, 2>;
 	using IndexType = ImageType::IndexType;
-	
+
 
 	struct CentroidType
 	{
@@ -23,14 +23,20 @@ public:
 	void SetNumberOfSuperPixels(int n) { m_number_of_super_pixels = n; }
 	void SetPertubSeeds(bool flag) { m_pertub_seeds = flag;  }
 
+	LabeledImageType::Pointer GetOutput() const { return m_output; }
+	ImageType::Pointer GetCountourImage() const { return m_contour_image; }
+
+
 	void Update();
 
 private:
 	ImageType::Pointer m_input = nullptr;
+	ImageType::Pointer m_contour_image = nullptr;
 	LabeledImageType::Pointer m_output = nullptr;
 	DistanceImageType::Pointer m_level_distance_image = nullptr;
 	DistanceImageType::Pointer m_spatial_distance_image = nullptr;
 	DistanceImageType::Pointer m_distance_image = nullptr;
+
 
 
 	int m_number_of_super_pixels = 200;
@@ -46,5 +52,9 @@ private:
 
 
 	void DoSLICO();
+
+	void EnforceLabelConnectivity();
+
+	void DrawContoursAroundSegmentedImage();
 
 };

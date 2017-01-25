@@ -15,8 +15,11 @@ void SLIC::Update()
 	
 	InitDistanceImage();
 
+	DoSLICO();
 
-	 
+	EnforceLabelConnectivity();
+
+	DrawContoursAroundSegmentedImage();
 }
 
 void SLIC::InitLabeledImage()
@@ -186,11 +189,12 @@ void SLIC::DoSLICO()
 					index[0] = x;
 					index[1] = y;
 
-				
+
 					//Get the distances
 					m_level_distance_image->SetPixel(index, pow(m_input->GetPixel(index) - centroid.l, 2));
 					m_spatial_distance_image->SetPixel(index, pow(x - centroid.x, 2) + pow(y - centroid.y, 2));
-					auto distance = (m_level_distance_image->GetPixel(index) / max_level[i]) + (m_spatial_distance_image->GetPixel(index) * invxywt);
+					auto distance = (m_level_distance_image->GetPixel(index) / max_level[i]) +
+							(m_spatial_distance_image->GetPixel(index) * invxywt);
 
 					if(distance < m_distance_image->GetPixel(index))
 					{
@@ -213,33 +217,203 @@ void SLIC::DoSLICO()
 		for (auto x = 0; x < width; ++x)
 		{
 			for(auto y = 0; y < height; ++y )
-			{	
+			{
 				ImageType::IndexType index;
 				index[0] = x;
 				index[1] = y;
-				
+
 				//pixel level distance
 				if (max_level[m_output->GetPixel(index)] < m_level_distance_image->GetPixel(index))
 					max_level[m_output->GetPixel(index)] = m_level_distance_image->GetPixel(index);
-				
+
 				//spatial distance
 				if (max_xy[m_output->GetPixel(index)] < m_distance_image->GetPixel(index))
 					max_xy[m_output->GetPixel(index)] = m_distance_image->GetPixel(index);
 			}
 		}
 
-		/**
-		 * TODO
-		 */
-		//Centroids com sigma nao tao batendo!!!!!!!!
+		//Recalculate the centroids
+		centroid_sigma.assign(m_number_of_super_pixels, {0, 0, 0});
+		cluster_size.assign(m_number_of_super_pixels, 0);
+
+		for(auto x = 0; x < width; ++x)
+		{
+			for(auto y = 0; y < height; ++y)
+			{
+				IndexType index;
+				index[0] = x;
+				index[1] = y;
+
+				auto l = m_output->GetPixel(index);
+
+				centroid_sigma[l].l += m_input->GetPixel(index);
+				centroid_sigma[l].x += x;
+				centroid_sigma[l].y += y;
+
+				cluster_size[l]++;
+			}
+		}
+
+		for(auto k = 0; k < m_number_of_super_pixels; ++k)
+		{
+			if(cluster_size[k] <= 0) cluster_size[k] = 1;
+
+			m_cluster_centers[k].l = centroid_sigma[k].l / cluster_size[k];
+			m_cluster_centers[k].x = centroid_sigma[k].x / cluster_size[k];
+			m_cluster_centers[k].y = centroid_sigma[k].y / cluster_size[k];
+		}
+
 
 	}
-
-	//repeat
-
-
-
-	//for each centroid
-	//for each pixel in 2S region of the centroid
-	//
 }
+
+void SLIC::EnforceLabelConnectivity()
+{
+	auto image_size = m_input->GetLargestPossibleRegion().GetSize();
+	auto num_pixels = m_input->GetLargestPossibleRegion().GetNumberOfPixels();
+	auto superpixel_size = num_pixels/m_number_of_super_pixels;
+    auto image_region = m_input->GetLargestPossibleRegion();
+	auto nlabels = LabeledImageType::New();
+	nlabels->SetRegions(image_region);
+	nlabels->Allocate();
+	nlabels->FillBuffer(-1);
+
+	int label = 0;
+	int adjlabel = 0;
+	IndexType oindex;
+    oindex[0] = 0;
+    oindex[1] = 0;
+
+    std::vector<IndexType> idxvec(num_pixels);
+
+	for(auto i = 0 ; i < image_size[0]; ++i)
+	{
+		for(auto j = 0; j < image_size[1]; ++j)
+		{
+			IndexType  index;
+			index[0] = i;
+			index[1] = j;
+
+			if( 0 > nlabels->GetPixel(oindex))
+            {
+                //Start new segment
+                nlabels->SetPixel(oindex, label);
+
+                idxvec[0][0] = i;
+                idxvec[0][1] = j;
+
+                //Quickly find a adjacent label for use later if needed
+                for(auto dx = -1; dx <= 1; ++dx)
+                {
+                    for(auto dy = -1; dy <= 1; ++dy)
+                    {
+                        IndexType  adj_index;
+                        adj_index[0] = idxvec[0][0] + dx;
+                        adj_index[1] = idxvec[0][1] + dy;
+                        if(image_region.IsInside(adj_index))
+                        {
+                            if(nlabels->GetPixel(adj_index) >= 0 ) adjlabel = nlabels->GetPixel(adj_index);
+                        }
+                    }
+                }
+
+                auto count = 1;
+                for(auto c = 0 ; c < count; ++c)
+                {
+                    for(auto dx = -1; dx <= 1; ++dx)
+                    {
+                        for (auto dy = -1; dy <= 1; ++dy)
+                        {
+                            IndexType adj_index;
+                            adj_index[0] = idxvec[c][0] + dx;
+                            adj_index[1] = idxvec[c][1] + dy;
+
+                            if(image_region.IsInside(adj_index))
+                            {
+
+                                if(0 > nlabels->GetPixel(adj_index) &&
+                                        m_output->GetPixel(oindex) == m_output->GetPixel(adj_index))
+                                {
+                                    idxvec[count][0] = adj_index[0];
+                                    idxvec[count][1] = adj_index[1];
+                                    nlabels->SetPixel(adj_index, label);
+                                    count++;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                //If segment size is less than a limit assign an adjacent label to it and decrement label count
+                if(count <= superpixel_size)
+                {
+                    for(auto c = 0 ; c < count; ++c)
+                    {
+                        nlabels->SetPixel(idxvec[c], adjlabel);
+                    }
+                    label--;
+                }
+                label++;
+            }
+            oindex[0]++;
+            if(oindex[0] >= image_size[0])
+            {
+                oindex[0] = 0;
+                oindex[1]++;
+            }
+
+		}
+	}
+
+    for(auto i = 0; i < image_size[0]; ++i)
+    {
+        for(auto j = 0; j < image_size[1]; ++j)
+        {
+            IndexType idx;
+            idx[0] = i;
+            idx[1] = j;
+
+            m_output->SetPixel(idx, nlabels->GetPixel(idx));
+        }
+    }
+
+    m_number_of_super_pixels = label;
+
+
+}
+
+void SLIC::DrawContoursAroundSegmentedImage() {
+
+	//Calculate gradients of labeled image
+	auto gradient_filter = itk::GradientImageFilter<LabeledImageType>::New();
+	gradient_filter->SetInput(m_output);
+	gradient_filter->Update();
+
+	//Generate a segmented image equal the input image
+	m_contour_image = ImageType::New();
+	m_contour_image->SetRegions(m_input->GetLargestPossibleRegion());
+	m_contour_image->Allocate();
+	m_contour_image->FillBuffer(0);
+
+	auto image_size = m_input->GetLargestPossibleRegion().GetSize();
+
+	auto gradient_image = gradient_filter->GetOutput();
+	for(auto i = 0; i < image_size[0]; ++i)
+	{
+		for(auto j = 0 ; j < image_size[1]; ++j)
+		{
+			IndexType  index;
+			index[0] = i;
+			index[1] = j;
+
+			m_contour_image->SetPixel(index, m_input->GetPixel(index));
+
+			if(gradient_image->GetPixel(index).GetNorm() > 0)
+			{
+				m_contour_image->SetPixel(index, 255);
+			}
+		}
+	}
+
+}
+
