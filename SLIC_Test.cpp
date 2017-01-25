@@ -16,6 +16,7 @@ int main(int argc, char **argv)
 
 	SLIC slic;
 	slic.SetInput(reader->GetOutput());
+	slic.SetNumberOfSuperPixels(20000);
 	slic.Update();
 
 	return EXIT_SUCCESS;

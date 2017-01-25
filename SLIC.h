@@ -9,12 +9,14 @@ public:
 	using ImageType = itk::Image<unsigned char, 2>;
 	using LabeledImageType = itk::Image<int, 2>;
 	using DistanceImageType = itk::Image<float, 2>;
+	using IndexType = ImageType::IndexType;
 	
 
-	struct Centroid
+	struct CentroidType
 	{
-		ImageType::PixelType pixel_value;
-		ImageType::IndexType index;
+		double l; 
+		double x;
+		double y;
 	};
 
 	void SetInput(ImageType::Pointer img){	m_input = img; }
@@ -26,11 +28,14 @@ public:
 private:
 	ImageType::Pointer m_input = nullptr;
 	LabeledImageType::Pointer m_output = nullptr;
-	DistanceImageType::Pointer m_distance = nullptr;
-	
+	DistanceImageType::Pointer m_level_distance_image = nullptr;
+	DistanceImageType::Pointer m_spatial_distance_image = nullptr;
+	DistanceImageType::Pointer m_distance_image = nullptr;
+
+
 	int m_number_of_super_pixels = 200;
 	bool m_pertub_seeds = false;
-	std::vector<Centroid> m_cluster_centers;
+	std::vector<CentroidType> m_cluster_centers;
 
 	void InitLabeledImage();
 	void InitDistanceImage();
