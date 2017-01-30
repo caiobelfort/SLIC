@@ -1,6 +1,7 @@
 #include "SLIC.h"
 
 #include <itkGradientImageFilter.h>
+#include <itkImageRegionIteratorWithIndex.h>
 
 void SLIC::Update()
 {
@@ -16,8 +17,6 @@ void SLIC::Update()
 	InitDistanceImage();
 
 	DoSLICO();
-
-	EnforceLabelConnectivity();
 
 	DrawContoursAroundSegmentedImage();
 }
@@ -72,7 +71,7 @@ void SLIC::InitCentroids()
 
 		for(auto i = 0; i < image_size[0]; ++i)
 		{
-			auto x = i * step + (x_offset + r & 0x1); //Hex grid
+			auto x = i * step + (x_offset);
 			if (x > image_size[0] - 1) break;
 			
 			IndexType index;
@@ -233,8 +232,8 @@ void SLIC::DoSLICO()
 		}
 
 		//Recalculate the centroids
-		centroid_sigma.assign(m_number_of_super_pixels, {0, 0, 0});
-		cluster_size.assign(m_number_of_super_pixels, 0);
+		centroid_sigma.assign(this->m_number_of_super_pixels, {0, 0, 0});
+		cluster_size.assign(this->m_number_of_super_pixels, 0);
 
 		for(auto x = 0; x < width; ++x)
 		{
@@ -244,9 +243,9 @@ void SLIC::DoSLICO()
 				index[0] = x;
 				index[1] = y;
 
-				auto l = m_output->GetPixel(index);
+				auto l = this->m_output->GetPixel(index);
 
-				centroid_sigma[l].l += m_input->GetPixel(index);
+				centroid_sigma[l].l += this->m_input->GetPixel(index);
 				centroid_sigma[l].x += x;
 				centroid_sigma[l].y += y;
 
@@ -254,131 +253,56 @@ void SLIC::DoSLICO()
 			}
 		}
 
-		for(auto k = 0; k < m_number_of_super_pixels; ++k)
+		for(auto k = 0; k < this->m_number_of_super_pixels; ++k)
 		{
 			if(cluster_size[k] <= 0) cluster_size[k] = 1;
 
-			m_cluster_centers[k].l = centroid_sigma[k].l / cluster_size[k];
-			m_cluster_centers[k].x = centroid_sigma[k].x / cluster_size[k];
-			m_cluster_centers[k].y = centroid_sigma[k].y / cluster_size[k];
+			this->m_cluster_centers[k].l = centroid_sigma[k].l / cluster_size[k];
+			this->m_cluster_centers[k].x = centroid_sigma[k].x / cluster_size[k];
+			this->m_cluster_centers[k].y = centroid_sigma[k].y / cluster_size[k];
 		}
 
 
 	}
+
+    EnforceLabelConnectivity(max_level, invxywt);
 }
 
-void SLIC::EnforceLabelConnectivity()
+
+
+void SLIC::EnforceLabelConnectivity(std::vector<double> maxc, double inv)
 {
-	auto image_size = m_input->GetLargestPossibleRegion().GetSize();
-	auto num_pixels = m_input->GetLargestPossibleRegion().GetNumberOfPixels();
-	auto superpixel_size = num_pixels/m_number_of_super_pixels;
-    auto image_region = m_input->GetLargestPossibleRegion();
-	auto nlabels = LabeledImageType::New();
-	nlabels->SetRegions(image_region);
-	nlabels->Allocate();
-	nlabels->FillBuffer(-1);
+    auto image_size = m_output->GetRequestedRegion().GetSize();
 
-	int label = 0;
-	int adjlabel = 0;
-	IndexType oindex;
-    oindex[0] = 0;
-    oindex[1] = 0;
-
-    std::vector<IndexType> idxvec(num_pixels);
-
-	for(auto i = 0 ; i < image_size[0]; ++i)
-	{
-		for(auto j = 0; j < image_size[1]; ++j)
-		{
-			IndexType  index;
-			index[0] = i;
-			index[1] = j;
-
-			if( 0 > nlabels->GetPixel(oindex))
-            {
-                //Start new segment
-                nlabels->SetPixel(oindex, label);
-
-                idxvec[0][0] = i;
-                idxvec[0][1] = j;
-
-                //Quickly find a adjacent label for use later if needed
-                for(auto dx = -1; dx <= 1; ++dx)
-                {
-                    for(auto dy = -1; dy <= 1; ++dy)
-                    {
-                        IndexType  adj_index;
-                        adj_index[0] = idxvec[0][0] + dx;
-                        adj_index[1] = idxvec[0][1] + dy;
-                        if(image_region.IsInside(adj_index))
-                        {
-                            if(nlabels->GetPixel(adj_index) >= 0 ) adjlabel = nlabels->GetPixel(adj_index);
-                        }
-                    }
-                }
-
-                auto count = 1;
-                for(auto c = 0 ; c < count; ++c)
-                {
-                    for(auto dx = -1; dx <= 1; ++dx)
-                    {
-                        for (auto dy = -1; dy <= 1; ++dy)
-                        {
-                            IndexType adj_index;
-                            adj_index[0] = idxvec[c][0] + dx;
-                            adj_index[1] = idxvec[c][1] + dy;
-
-                            if(image_region.IsInside(adj_index))
-                            {
-
-                                if(0 > nlabels->GetPixel(adj_index) &&
-                                        m_output->GetPixel(oindex) == m_output->GetPixel(adj_index))
-                                {
-                                    idxvec[count][0] = adj_index[0];
-                                    idxvec[count][1] = adj_index[1];
-                                    nlabels->SetPixel(adj_index, label);
-                                    count++;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                //If segment size is less than a limit assign an adjacent label to it and decrement label count
-                if(count <= superpixel_size)
-                {
-                    for(auto c = 0 ; c < count; ++c)
-                    {
-                        nlabels->SetPixel(idxvec[c], adjlabel);
-                    }
-                    label--;
-                }
-                label++;
-            }
-            oindex[0]++;
-            if(oindex[0] >= image_size[0])
-            {
-                oindex[0] = 0;
-                oindex[1]++;
-            }
-
-		}
-	}
-
-    for(auto i = 0; i < image_size[0]; ++i)
+    //Iterate over label image searching for non assigned pixels
+    for(auto x = 0; x < image_size[0]; ++x)
     {
-        for(auto j = 0; j < image_size[1]; ++j)
+        for(auto y = 0; y < image_size[1]; ++y)
         {
-            IndexType idx;
-            idx[0] = i;
-            idx[1] = j;
+            IndexType index;
+            index[0] = x;
+            index[1] = y;
+            if(m_output->GetPixel(index) >= 0) continue; //Assigned
 
-            m_output->SetPixel(idx, nlabels->GetPixel(idx));
+            //Not assigned
+            //Iterate for centroids searching the centroid with lower distance
+            auto dist = std::numeric_limits<double>::max();
+            for(auto c = 0; c < m_cluster_centers.size(); ++c)
+            {
+                auto centroid = m_cluster_centers[c];
+                //Get the distances
+                m_level_distance_image->SetPixel(index, pow(m_input->GetPixel(index) - centroid.l, 2));
+                m_spatial_distance_image->SetPixel(index, pow(x - centroid.x, 2) + pow(y - centroid.y, 2));
+                auto distance = (m_level_distance_image->GetPixel(index) / maxc[c]) +
+                                (m_spatial_distance_image->GetPixel(index) * inv);
+
+                if(distance < dist){
+                    dist = distance;
+                    m_output->SetPixel(index, c);
+                }
+            }
         }
     }
-
-    m_number_of_super_pixels = label;
-
 
 }
 
@@ -414,6 +338,45 @@ void SLIC::DrawContoursAroundSegmentedImage() {
 			}
 		}
 	}
+
+}
+
+void SLIC::GroupSimilarSuperpixels() {
+
+}
+
+std::vector<itk::Image<short, 2>::Pointer> SLIC::GetImages() const {
+
+    std::vector<ImageType::Pointer> images;
+    for(auto ck = 0 ; ck < m_cluster_centers.size(); ++ck)
+    {
+        //Create a image
+        auto cimage = ImageType::New();
+        cimage->SetRegions(m_input->GetLargestPossibleRegion());
+        cimage->Allocate();
+        cimage->FillBuffer(-1023);
+
+        auto image_size = m_input->GetLargestPossibleRegion().GetSize();
+
+        for(auto x = 0; x < image_size[0]; ++x)
+        {
+            for(auto y = 0; y < image_size[1]; ++y)
+            {
+                IndexType  index;
+                index[0] = x;
+                index[1] = y;
+
+                if(m_output->GetPixel(index) == ck)
+                {
+                    cimage->SetPixel(index, m_input->GetPixel(index));
+                }
+            }
+        }
+
+        images.push_back(cimage);
+    }
+
+    return images;
 
 }
 

@@ -6,7 +6,7 @@
 class SLIC
 {
 public:
-	using ImageType = itk::Image<unsigned char, 2>;
+	using ImageType = itk::Image<short, 2>;
 	using LabeledImageType = itk::Image<int, 2>;
 	using DistanceImageType = itk::Image<float, 2>;
 	using IndexType = ImageType::IndexType;
@@ -25,6 +25,8 @@ public:
 
 	LabeledImageType::Pointer GetOutput() const { return m_output; }
 	ImageType::Pointer GetCountourImage() const { return m_contour_image; }
+
+    std::vector<ImageType::Pointer> GetImages() const;
 
 
 	void Update();
@@ -47,6 +49,8 @@ private:
 	void InitLabeledImage();
 	void InitDistanceImage();
 	void InitCentroids();
+
+    void GroupSimilarSuperpixels();
 	
 	//Computes the gradient of pixels and move centroids to lower gradient position in 3x3 neighborhood
 	void PertubSeeds();
@@ -54,8 +58,9 @@ private:
 
 	void DoSLICO();
 
-	void EnforceLabelConnectivity();
+	void EnforceLabelConnectivity(std::vector<double> maxc, double inv);
 
 	void DrawContoursAroundSegmentedImage();
+
 
 };
