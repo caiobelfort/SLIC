@@ -41,6 +41,7 @@ private:
 
 	int m_number_of_super_pixels = 200;
 	bool m_pertub_seeds = false;
+
 	std::vector<CentroidType> m_cluster_centers;
 
 	void InitLabeledImage();

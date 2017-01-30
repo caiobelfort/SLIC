@@ -18,10 +18,16 @@ int main(int argc, char **argv)
 
 	SLIC3D slic;
 	slic.SetInput(reader->GetOutput());
-	slic.SetNumberOfSuperPixels(200000);
+	slic.SetNumberOfSuperPixels(10);
 	slic.Update();
 
 	auto output = slic.GetCountourImage();
+
+	auto writer = itk::ImageFileWriter<ImageType>::New();
+	writer->SetInput(output);
+	writer->SetFileName("segments.mha");
+	writer->Update();
+
 
 	return EXIT_SUCCESS;
 

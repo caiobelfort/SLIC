@@ -42,13 +42,13 @@ private:
 	int m_number_of_super_pixels = 200;
 	bool m_pertub_seeds = false;
 	std::vector<CentroidType> m_cluster_centers;
-
+	double m_step;
 
 	void InitLabeledImage();
 	void InitDistanceImage();
 	void InitCentroids();
 
-	bool IsOutOfBounds(float x, float y, float z);
+	bool IsInsideImageRegion(IndexType index) const { return m_input->GetLargestPossibleRegion().IsInside(index); }
 	//Computes the gradient of pixels and move centroids to lower gradient position in 3x3 neighborhood
 	void PertubSeeds();
 
